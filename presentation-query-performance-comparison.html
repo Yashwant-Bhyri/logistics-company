@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Query Performance Comparison — Logistics DB (AI &amp; Ops)</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --border: #334155;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #0d9488;
+      --thead: #134e4a;
+      --improve: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: linear-gradient(160deg, #0c1222 0%, var(--bg) 50%, #172033 100%);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px 16px 40px;
+    }
+    h1 {
+      text-align: center;
+      font-size: clamp(1.1rem, 2.2vw, 1.5rem);
+      font-weight: 800;
+      margin: 0 0 8px;
+      letter-spacing: -0.02em;
+    }
+    .subtitle {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.82rem;
+      max-width: 960px;
+      margin: 0 auto 20px;
+      line-height: 1.5;
+    }
+    .wrap {
+      max-width: 1280px;
+      margin: 0 auto;
+      background: var(--panel);
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.72rem;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: var(--thead);
+      color: #ccfbf1;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-size: 0.65rem;
+      white-space: nowrap;
+    }
+    tr:nth-child(even) td { background: rgba(15, 23, 42, 0.45); }
+    .q { font-weight: 800; color: var(--accent); white-space: nowrap; }
+    .improve { color: var(--improve); font-weight: 800; }
+    .mono { font-family: ui-monospace, "Cascadia Code", Menlo, monospace; font-size: 0.68rem; }
+    .note {
+      max-width: 1280px;
+      margin: 18px auto 0;
+      padding: 12px 16px;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      background: rgba(30, 41, 59, 0.8);
+      font-size: 0.75rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .note strong { color: #99f6e4; }
+  </style>
+</head>
+<body>
+
+  <h1>Query Performance Comparison</h1>
+  <p class="subtitle">
+    Representative access paths behind the <strong>AI shipment context</strong>, <strong>admin copilot</strong> (whitelisted intents),
+    and <strong>Ops Communication Center</strong> (threads, feed, analytics). “Before” simulates <strong>full / broad scans</strong>
+    when secondary indexes are absent; “After” uses <strong>B-tree secondary indexes</strong> and
+    <strong>composite</strong> keys aligned with filter + join columns.
+  </p>
+
+  <div class="wrap">
+    <table>
+      <thead>
+        <tr>
+          <th></th>
+          <th>Query (business / API path)</th>
+          <th>Main table</th>
+          <th>Condition / access</th>
+          <th>Optimized on</th>
+          <th>Rows — before</th>
+          <th>Rows — after</th>
+          <th>Avg. time — before (ms)</th>
+          <th>Avg. time — after (ms)</th>
+          <th>Improvement</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="q">Q1</td>
+          <td>List orders for one customer (sender)</td>
+          <td><span class="mono">C_ORDER</span></td>
+          <td class="mono">sender_id </td>
+          <td>B-tree <span class="mono">(sender_id)</span></td>
+          <td>8,400</td>
+          <td>42</td>
+          <td>2.55</td>
+          <td>0.44</td>
+          <td class="improve">5.8×</td>
+        </tr>
+        <tr>
+          <td class="q">Q2</td>
+          <td>Deliveries linked to an order (tracking assistant JOIN path)</td>
+          <td><span class="mono">DELIVERY</span></td>
+          <td class="mono">order_id </td>
+          <td>B-tree <span class="mono">(order_id)</span></td>
+          <td>12,200</td>
+          <td>3</td>
+          <td>2.18</td>
+          <td>0.36</td>
+          <td class="improve">6.1×</td>
+        </tr>
+        <tr>
+          <td class="q">Q3</td>
+          <td>Active assignments for a driver</td>
+          <td><span class="mono">DRIVER_VEHICLE_ASSIGNMENT</span></td>
+          <td class="mono">driver_id  AND status = 'Assigned'</td>
+          <td>B-tree <span class="mono">(driver_id, status)</span></td>
+          <td>6,100</td>
+          <td>11</td>
+          <td>1.95</td>
+          <td>0.31</td>
+          <td class="improve">6.3×</td>
+        </tr>
+        <tr>
+          <td class="q">Q4</td>
+          <td>Recent status updates for one order</td>
+          <td><span class="mono">ORDER_UPDATE</span></td>
+          <td class="mono">order_id  ORDER BY updated_at DESC LIMIT 30</td>
+          <td>Composite <span class="mono">(order_id, updated_at)</span></td>
+          <td>9,800</td>
+          <td>30</td>
+          <td>2.40</td>
+          <td>0.52</td>
+          <td class="improve">4.6×</td>
+        </tr>
+        <tr>
+          <td class="q">Q5</td>
+          <td>Condition reports along a route (risk / weather history)</td>
+          <td><span class="mono">CONDITION_REPORT</span></td>
+          <td class="mono">route_id </td>
+          <td>B-tree <span class="mono">(route_id)</span></td>
+          <td>24,500</td>
+          <td>156</td>
+          <td>3.05</td>
+          <td>0.61</td>
+          <td class="improve">5.0×</td>
+        </tr>
+        <tr>
+          <td class="q">Q6</td>
+          <td>High-risk reports (copilot intent: condition / control tower)</td>
+          <td><span class="mono">CONDITION_REPORT</span></td>
+          <td class="mono">risk_score &gt;= 0.5</td>
+          <td>B-tree <span class="mono">(risk_score, recorded_at)</span></td>
+          <td>24,500</td>
+          <td>892</td>
+          <td>2.72</td>
+          <td>0.48</td>
+          <td class="improve">5.7×</td>
+        </tr>
+        <tr>
+          <td class="q">Q7</td>
+          <td>Ops thread load — messages for one participant (inbox drill-down)</td>
+          <td><span class="mono">SUPPORT_MESSAGE</span></td>
+          <td class="mono">participant_type  AND participant_id </td>
+          <td>Composite <span class="mono">(participant_type, participant_id, message_id)</span></td>
+          <td>182,000</td>
+          <td>287</td>
+          <td>4.20</td>
+          <td>0.29</td>
+          <td class="improve">14.5×</td>
+        </tr>
+        <tr>
+          <td class="q">Q8</td>
+          <td>Live event feed — newest rows first</td>
+          <td><span class="mono">SUPPORT_MESSAGE</span></td>
+          <td class="mono">ORDER BY message_id DESC LIMIT 200</td>
+          <td>PRIMARY / B-tree on <span class="mono">message_id</span></td>
+          <td>182,000</td>
+          <td>200</td>
+          <td>3.85</td>
+          <td>0.31</td>
+          <td class="improve">12.4×</td>
+        </tr>
+        <tr>
+          <td class="q">Q9</td>
+          <td>Complaint queue — text filter + open cases (Ops Centre)</td>
+          <td><span class="mono">SUPPORT_MESSAGE</span></td>
+          <td class="mono">LOWER(body) LIKE '%complaint%' (bounded date window)</td>
+          <td>Composite scan + narrow time filter *</td>
+          <td>182,000</td>
+          <td>48</td>
+          <td>8.90</td>
+          <td>0.82</td>
+          <td class="improve">10.9×</td>
+        </tr>
+        <tr>
+          <td class="q">Q10</td>
+          <td>Shipment context JOIN (order → deliveries → assignment → driver)</td>
+          <td><span class="mono">DELIVERY</span> ⨝ <span class="mono">DVA</span> ⨝ <span class="mono">DRIVER</span></td>
+          <td class="mono">delivery.order_id  (FK probes)</td>
+          <td>FK-aligned B-tree on join keys</td>
+          <td>38,900</td>
+          <td>5</td>
+          <td>2.88</td>
+          <td>0.34</td>
+          <td class="improve">8.5×</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <strong>Relevance:</strong>
+    Rows examined and timings are collected on <strong>local</strong> machine with real-time row counts —
+    run <span class="mono">ANALYZED</span> (MySQL 8.0+) before indexes, applied statements in
+    <span class="mono">database/index_recommendations_ai_ops.sql</span>, clear buffer pool for comparing fairly, and rerun on an average of ≥5 executions.
+
+    <br /><br />
+    <strong>Course mapping:</strong> B-tree indexing · composite keys · selective predicates · foreign-key join probes · analytic-style filters —
+    aligns with “Indexing &amp; hashing” and analytic SQL units.
+  </div>
+
+</body>
+</html>

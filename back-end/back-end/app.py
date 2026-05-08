@@ -1,3 +1,12 @@
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parent / ".env")
+except ImportError:
+    pass
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import mysql.connector
@@ -7,27 +16,48 @@ import datetime
 import json
 import requests
 import math
+import os
 from datetime import datetime as dt
 import hashlib
 
+from ai_routes import register_ai_routes
+
 app = Flask(__name__)
-app.config["SECRET_KEY"] = "logistics_secret_key_123_SUPER_LONG_ABC_987654321"
-CORS(app, origins=["http://localhost:3000", "http://127.0.0.1:3000"])
+app.config["SECRET_KEY"] = (
+    os.environ.get("JWT_SECRET_KEY")
+    or os.environ.get("SECRET_KEY")
+    or "dev-only-insecure-secret-change-me"
+)
+# Allow any localhost / 127.0.0.1 dev port so sign-in works if CRA uses :3001, etc.
+_DEV_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+]
+CORS(app, origins=_DEV_ORIGINS)
 CORS(app, supports_credentials=True)
 CORS(app, resources={
     r"/route/*": {
-        "origins": "http://localhost:3000",
+        "origins": _DEV_ORIGINS,
         "allow_headers": ["Content-Type", "Authorization"]
     }
 })
 
 # Database connection
+DB_HOST = os.environ.get("MYSQL_HOST", "localhost")
+DB_PORT = int(os.environ.get("MYSQL_PORT", "3306"))
+DB_USER = os.environ.get("MYSQL_USER", "root")
+DB_PASSWORD = os.environ.get("MYSQL_PASSWORD", "")
+DB_NAME = os.environ.get("MYSQL_DATABASE", "LOGISTICS_COMPANY")
+
 def get_db_connection():
     return mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="Aqu@rius3101!!",
-        database="LOGISTICS_COMPANY"
+        host=DB_HOST,
+        port=DB_PORT,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        database=DB_NAME
     )
 
 def safe_cursor():
@@ -180,6 +210,67 @@ def verify_token(request):
         return payload
     except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
         return None
+
+def _auth_error(code, message):
+    return jsonify({"message": message}), code
+
+def _can_access_order(cursor, user, order_id):
+    role = user.get("role")
+    uid = user.get("user_id")
+    if role == "admin":
+        return True
+    if role == "customer":
+        cursor.execute(
+            "SELECT 1 FROM C_ORDER WHERE order_id=%s AND (sender_id=%s OR receiver_id=%s) LIMIT 1",
+            (order_id, uid, uid),
+        )
+        return cursor.fetchone() is not None
+    if role == "driver":
+        cursor.execute(
+            """
+            SELECT 1
+            FROM DELIVERY d
+            JOIN DRIVER_VEHICLE_ASSIGNMENT dva ON d.assignment_id = dva.assignment_id
+            WHERE d.order_id = %s AND dva.driver_id = %s
+            LIMIT 1
+            """,
+            (order_id, uid),
+        )
+        return cursor.fetchone() is not None
+    return False
+
+@app.before_request
+def enforce_route_auth():
+    if request.method == "OPTIONS":
+        return None
+
+    path = request.path or ""
+    user = verify_token(request)
+
+    if path.startswith("/admin"):
+        if not user:
+            return _auth_error(401, "Unauthorized")
+        if user.get("role") != "admin":
+            return _auth_error(403, "Admin session required")
+
+    if path in {"/driver/assignments", "/add_stop_notes", "/update_stop_status", "/save_current_conditions"}:
+        if not user:
+            return _auth_error(401, "Unauthorized")
+        if user.get("role") != "driver":
+            return _auth_error(403, "Driver session required")
+
+    if path in {"/create_order", "/select_payment_method"}:
+        if not user:
+            return _auth_error(401, "Unauthorized")
+        if user.get("role") != "customer":
+            return _auth_error(403, "Customer session required")
+
+    if path == "/orders" or path.startswith("/track_order/"):
+        if not user:
+            return _auth_error(401, "Unauthorized")
+        if user.get("role") not in {"customer", "driver", "admin"}:
+            return _auth_error(403, "Forbidden")
+    return None
 
 def calculate_haversine_distance(lat1, lng1, lat2, lng2):
     if not lat1 or not lng1 or not lat2 or not lng2:
@@ -351,28 +442,50 @@ def set_driver_password():
 
 @app.route('/create_order', methods=['POST'])
 def create_order():
+    user = verify_token(request)
     db, cursor = safe_cursor()
     try:
         data = request.json
         price = calculate_price(data['weight'], data.get('length', 0), data.get('width', 0), data.get('height', 0), data.get('type'))
         cursor.execute("""
-            INSERT INTO C_ORDER (order_id, sender_id, receiver_id, weight, length, width, height, type, status, price)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'Pending', %s)
-        """, (data['order_id'], data['sender_id'], data['receiver_id'], data['weight'],
+            INSERT INTO C_ORDER (sender_id, receiver_id, weight, length, width, height, type, status, price)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'Pending', %s)
+        """, (user["user_id"], data['receiver_id'], data['weight'],
               data.get('length', 0), data.get('width', 0), data.get('height', 0),
               data.get('type'), price))
         db.commit()
-        return jsonify({"message": "Order created!"})
+        return jsonify({"message": "Order created!", "order_id": cursor.lastrowid})
     finally:
         cursor.close()
         db.close()
 
 @app.route("/orders", methods=["GET"])
 def get_all_orders():
+    user = verify_token(request)
     try:
         db, cursor = safe_cursor()
 
-        cursor.execute("SELECT * FROM C_ORDER")
+        if user["role"] == "admin":
+            cursor.execute("SELECT * FROM C_ORDER")
+        elif user["role"] == "customer":
+            cursor.execute(
+                "SELECT * FROM C_ORDER WHERE sender_id=%s OR receiver_id=%s ORDER BY order_id DESC",
+                (user["user_id"], user["user_id"]),
+            )
+        elif user["role"] == "driver":
+            cursor.execute(
+                """
+                SELECT o.*
+                FROM C_ORDER o
+                JOIN DELIVERY d ON o.order_id = d.order_id
+                JOIN DRIVER_VEHICLE_ASSIGNMENT dva ON d.assignment_id = dva.assignment_id
+                WHERE dva.driver_id = %s
+                ORDER BY o.order_id DESC
+                """,
+                (user["user_id"],),
+            )
+        else:
+            return jsonify({"message": "Forbidden"}), 403
         orders = cursor.fetchall()
 
         cursor.close()
@@ -386,8 +499,12 @@ def get_all_orders():
 
 @app.route('/track_order/<int:order_id>', methods=['GET', 'OPTIONS'])
 def track_order(order_id):
+    user = verify_token(request)
     db, cursor = safe_cursor()
     try:
+        if not _can_access_order(cursor, user, order_id):
+            return jsonify({"error": "Forbidden"}), 403
+
         cursor.execute("SELECT * FROM C_ORDER WHERE order_id = %s", (order_id,))
         order = cursor.fetchone()
 
@@ -411,14 +528,19 @@ def track_order(order_id):
 
 @app.route('/select_payment_method', methods=['POST'])
 def select_payment_method():
+    user = verify_token(request)
     db, cursor = safe_cursor()
     try:
         data = request.json
+        order_id = data['order_id']
+        if not _can_access_order(cursor, user, order_id):
+            return jsonify({"error": "Forbidden"}), 403
+
         cursor.execute("""
             INSERT INTO PAYMENT (order_id, method, status, timestamp)
             VALUES (%s, %s, 'Pending', NOW())
-        """, (data['order_id'], data['method']))
-        cursor.execute("UPDATE C_ORDER SET status = 'In Progress' WHERE order_id = %s", (data['order_id'],))
+        """, (order_id, data['method']))
+        cursor.execute("UPDATE C_ORDER SET status = 'In Progress' WHERE order_id = %s", (order_id,))
         db.commit()
         return jsonify({"message": "Payment method selected!"})
     finally:
@@ -547,8 +669,6 @@ def get_route_stops(route_id):
 @app.route("/add_stop_notes", methods=["POST"])
 def add_stop_notes():
     user = verify_token(request)
-    #if not user or user["role"] != "driver":
-        #return jsonify({"message": "Unauthorized"}), 401
 
     data = request.json
     stop_id = data.get("stop_id")
@@ -1702,6 +1822,8 @@ def resend_driver_token(driver_id):
     finally:
         cursor.close()
         db.close()
+
+register_ai_routes(app, safe_cursor=safe_cursor, verify_token=verify_token)
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)

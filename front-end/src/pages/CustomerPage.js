@@ -19,6 +19,14 @@ function CustomerPage() {
     const [loading, setLoading] = useState(true);
     const [trackingLoading, setTrackingLoading] = useState(false);
     const [activeSection, setActiveSection] = useState("create");
+    const [assistQuery, setAssistQuery] = useState("");
+    const [assistAnswer, setAssistAnswer] = useState("");
+    const [assistBusy, setAssistBusy] = useState(false);
+    const [assistError, setAssistError] = useState("");
+    const [notifChannel, setNotifChannel] = useState("sms");
+    const [draftSubject, setDraftSubject] = useState("");
+    const [draftBody, setDraftBody] = useState("");
+    const [notifBusy, setNotifBusy] = useState(false);
     const location = useLocation();
     const navigate = useNavigate();
     const { customerId, customerName } = location.state || {};
@@ -26,11 +34,21 @@ function CustomerPage() {
     const mapInstanceRef = useRef(null);
     const markerRef = useRef(null);
 
+    const getAuthHeaders = (includeJson = false) => {
+        const token = localStorage.getItem("token");
+        const headers = {};
+        if (includeJson) headers["Content-Type"] = "application/json";
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+        return headers;
+    };
+
     // Fetch all orders for this customer
     useEffect(() => {
         const fetchOrders = async () => {
             try {
-                const res = await fetch("http://127.0.0.1:5000/orders");
+                const res = await fetch("/orders", {
+                    headers: getAuthHeaders()
+                });
                 const data = await res.json();
                 const customerOrders = data.filter(o => o.sender_id === customerId || o.receiver_id === customerId);
                 setOrders(customerOrders);
@@ -115,9 +133,9 @@ function CustomerPage() {
     const handleChange = e => setForm({ ...form, [e.target.name]: e.target.value });
 
     const handleSelectPayment = (orderId, method) => {
-        fetch("http://127.0.0.1:5000/select_payment_method", {
+        fetch("/select_payment_method", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: getAuthHeaders(true),
             body: JSON.stringify({ order_id: orderId, method: method })
         })
             .then(res => res.json())
@@ -184,12 +202,10 @@ function CustomerPage() {
             return;
         }
 
-        fetch("http://127.0.0.1:5000/create_order", {
+        fetch("/create_order", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: getAuthHeaders(true),
             body: JSON.stringify({
-                order_id: Date.now(),
-                sender_id: customerId,
                 receiver_id: parseInt(form.receiver_id),
                 weight: parseFloat(form.weight),
                 length: parseFloat(form.length) || 0,
@@ -202,7 +218,7 @@ function CustomerPage() {
             .then(data => {
                 alert("✅ " + data.message);
                 setForm({});
-                fetch("http://127.0.0.1:5000/orders")
+                fetch("/orders", { headers: getAuthHeaders() })
                     .then(res => res.json())
                     .then(data => {
                         const customerOrders = data.filter(o => o.sender_id === customerId || o.receiver_id === customerId);
@@ -222,7 +238,9 @@ function CustomerPage() {
         }
         setTrackingLoading(true);
         try {
-            const res = await fetch(`http://127.0.0.1:5000/track_order/${orderId}`);
+            const res = await fetch(`/track_order/${orderId}`, {
+                headers: getAuthHeaders()
+            });
             const data = await res.json();
             if (data.order_id) {
                 setTrackingOrder(data);
@@ -246,7 +264,9 @@ function CustomerPage() {
         if (!trackingOrder) return;
         setTrackingLoading(true);
         try {
-            const res = await fetch(`http://127.0.0.1:5000/track_order/${trackingOrder.order_id}`);
+            const res = await fetch(`/track_order/${trackingOrder.order_id}`, {
+                headers: getAuthHeaders()
+            });
             const data = await res.json();
             setTrackingOrder(data);
             setTrackingInfo(data);
@@ -257,7 +277,82 @@ function CustomerPage() {
         }
     };
 
+    const askTrackingAssistant = async () => {
+        const tok = localStorage.getItem("token");
+        if (!tok) {
+            alert("AI assistant needs a logged-in session. Please log out and sign in again.");
+            return;
+        }
+        if (!trackingOrder?.order_id) return;
+        setAssistBusy(true);
+        setAssistError("");
+        try {
+            const res = await fetch("/api/ai/tracking-assistant", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${tok}`
+                },
+                body: JSON.stringify({
+                    order_id: trackingOrder.order_id,
+                    message: assistQuery.trim() || "Summarize shipment status briefly."
+                })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setAssistAnswer("");
+                setAssistError(data.error || `Error ${res.status}`);
+                return;
+            }
+            setAssistAnswer(data.answer || "");
+        } catch (e) {
+            setAssistAnswer("");
+            setAssistError(String(e.message || e));
+        } finally {
+            setAssistBusy(false);
+        }
+    };
+
+    const generateNotificationDraft = async () => {
+        const tok = localStorage.getItem("token");
+        if (!tok) {
+            alert("Sign in required to draft notifications.");
+            return;
+        }
+        if (!trackingOrder?.order_id) return;
+        setNotifBusy(true);
+        setDraftSubject("");
+        setDraftBody("");
+        try {
+            const res = await fetch("/api/ai/notification-draft", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${tok}`
+                },
+                body: JSON.stringify({
+                    order_id: trackingOrder.order_id,
+                    channel: notifChannel,
+                    tone: "professional concise",
+                    template: "status_update_general"
+                })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                alert(data.error || `Draft failed (${res.status})`);
+                return;
+            }
+            setDraftSubject(data.subject || "");
+            setDraftBody(data.body || "");
+        } catch (e) {
+            alert(String(e.message || e));
+        } finally {
+            setNotifBusy(false);
+        }
+    };
+
     const logout = () => {
+        localStorage.removeItem("token");
         navigate("/login");
     };
 
@@ -603,6 +698,63 @@ function CustomerPage() {
                                         ))}
                                     </div>
                                 )}
+
+                                <div style={styles.aiAssistantBox}>
+                                    <h4 style={{ marginTop: 0 }}>🤖 Tracking assistant</h4>
+                                    <p style={styles.aiHint}>
+                                        Ask plain-language questions. Answers use only shipment data stored in our system.
+                                    </p>
+                                    <textarea
+                                        placeholder="Example: What's the payment status and last scan?"
+                                        value={assistQuery}
+                                        onChange={(e) => setAssistQuery(e.target.value)}
+                                        style={styles.aiTextarea}
+                                        rows={4}
+                                        disabled={assistBusy}
+                                    />
+                                    <div style={styles.aiRow}>
+                                        <button type="button" onClick={askTrackingAssistant} disabled={assistBusy} style={styles.aiPrimary}>
+                                            {assistBusy ? "⏳ Asking..." : "Ask assistant"}
+                                        </button>
+                                        {assistError && (
+                                            <span style={styles.aiError}>{assistError}</span>
+                                        )}
+                                    </div>
+                                    {assistAnswer && (
+                                        <div style={styles.aiAnswer}>
+                                            {assistAnswer}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div style={styles.notifDraftBox}>
+                                    <h4 style={{ marginTop: 0 }}>✉️ Message draft ({notifChannel === "sms" ? "SMS-style" : "Email"})</h4>
+                                    <p style={styles.aiHint}>
+                                        Generates a reusable customer message from this order (copy only—nothing is sent automatically).
+                                    </p>
+                                    <div style={styles.aiRow}>
+                                        <select
+                                            value={notifChannel}
+                                            onChange={(e) => setNotifChannel(e.target.value)}
+                                            style={styles.filterSelectCompact}
+                                            disabled={notifBusy}
+                                        >
+                                            <option value="sms">SMS-length draft</option>
+                                            <option value="email">Email draft</option>
+                                        </select>
+                                        <button type="button" onClick={generateNotificationDraft} disabled={notifBusy} style={styles.aiSecondary}>
+                                            {notifBusy ? "⏳ Generating..." : "Generate draft"}
+                                        </button>
+                                    </div>
+                                    {(draftSubject || draftBody) && (
+                                        <div style={styles.draftOut}>
+                                            {draftSubject ? (
+                                                <div><strong>Subject:</strong> {draftSubject}</div>
+                                            ) : null}
+                                            <pre style={styles.draftBody}>{draftBody}</pre>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         )}
                     </div>
@@ -911,6 +1063,100 @@ const styles = {
         textAlign: "center",
         padding: "40px",
         color: "#7f8c8d"
+    },
+    aiAssistantBox: {
+        marginTop: "24px",
+        padding: "20px",
+        backgroundColor: "#f0f7ff",
+        borderRadius: "12px",
+        border: "1px solid #cce5ff"
+    },
+    notifDraftBox: {
+        marginTop: "18px",
+        padding: "20px",
+        backgroundColor: "#f8fdf8",
+        borderRadius: "12px",
+        border: "1px solid #cce8cc"
+    },
+    aiHint: {
+        margin: "4px 0 12px",
+        fontSize: "13px",
+        color: "#555"
+    },
+    aiTextarea: {
+        width: "100%",
+        boxSizing: "border-box",
+        padding: "12px",
+        borderRadius: "8px",
+        border: "1px solid #b8daff",
+        fontSize: "14px",
+        fontFamily: "inherit",
+        resize: "vertical",
+        marginBottom: "10px",
+        outline: "none"
+    },
+    aiRow: {
+        display: "flex",
+        flexWrap: "wrap",
+        gap: "10px",
+        alignItems: "center",
+        marginBottom: "10px"
+    },
+    aiPrimary: {
+        padding: "10px 18px",
+        backgroundColor: "#0056b3",
+        color: "white",
+        border: "none",
+        borderRadius: "8px",
+        cursor: "pointer",
+        fontWeight: "600",
+        fontSize: "14px"
+    },
+    aiSecondary: {
+        padding: "10px 18px",
+        backgroundColor: "#28a745",
+        color: "white",
+        border: "none",
+        borderRadius: "8px",
+        cursor: "pointer",
+        fontWeight: "600",
+        fontSize: "14px"
+    },
+    filterSelectCompact: {
+        padding: "8px 12px",
+        borderRadius: "8px",
+        border: "1px solid #ccc",
+        fontSize: "14px"
+    },
+    aiError: {
+        color: "#c82333",
+        fontSize: "13px"
+    },
+    aiAnswer: {
+        marginTop: "8px",
+        padding: "14px",
+        backgroundColor: "white",
+        borderRadius: "8px",
+        border: "1px solid #b8daff",
+        fontSize: "14px",
+        lineHeight: "1.5",
+        whiteSpace: "pre-wrap"
+    },
+    draftOut: {
+        marginTop: "12px",
+        padding: "12px",
+        backgroundColor: "white",
+        borderRadius: "8px",
+        border: "1px dashed #bbb",
+        fontSize: "14px"
+    },
+    draftBody: {
+        marginTop: "8px",
+        fontFamily: "system-ui, sans-serif",
+        whiteSpace: "pre-wrap",
+        margin: "8px 0 0",
+        padding: "0",
+        overflow: "auto"
     },
     button: {
         padding: "10px 20px",

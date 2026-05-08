@@ -12,7 +12,7 @@ export default function LoginPage() {
     const handleLogin = async () => {
         setLoading(true);
         try {
-            const response = await fetch("http://localhost:5000/login", {
+            const response = await fetch("/login", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json"
@@ -24,9 +24,18 @@ export default function LoginPage() {
                 })
             });
 
-            const data = await response.json();
+            const raw = await response.text();
+            let data = {};
+            try {
+                data = raw ? JSON.parse(raw) : {};
+            } catch {
+                data = { message: raw?.slice(0, 200) || response.statusText };
+            }
 
             if (response.ok) {
+                if (data.token) {
+                    localStorage.setItem("token", data.token);
+                }
                 alert("✅ Login successful!");
                 if (role === "customer") navigate("/customer", {
                     state: {
@@ -35,17 +44,23 @@ export default function LoginPage() {
                     }
                 });
                 if (role === "driver") {
-                    localStorage.setItem("token", data.token);
                     localStorage.setItem("driver_id", data.driver_id);
                     navigate("/driver");
                 }
-                if (role === "admin") navigate("/admin");
+                if (role === "admin") {
+                    if (data.admin_id != null) localStorage.setItem("admin_id", String(data.admin_id));
+                    if (data.name) localStorage.setItem("admin_name", data.name);
+                    navigate("/admin");
+                }
             } else {
                 alert(data.message || "❌ Login failed");
             }
         } catch (error) {
             console.error(error);
-            alert("❌ Server error. Please try again.");
+            const msg = error?.message || String(error);
+            alert(
+                `❌ Could not reach the API. Is Flask running on port 5000?\n\n${msg}`
+            );
         } finally {
             setLoading(false);
         }

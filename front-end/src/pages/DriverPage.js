@@ -39,7 +39,7 @@ export default function DriverPage() {
     const saveConditions = async () => {
         const token = localStorage.getItem("token");
         try {
-            const response = await fetch(`http://127.0.0.1:5000/save_current_conditions/${selectedRoute}`, {
+            const response = await fetch(`/save_current_conditions/${selectedRoute}`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -86,7 +86,7 @@ export default function DriverPage() {
         } catch (e) {
             console.error("Error decoding token:", e);
         }
-        fetch("http://127.0.0.1:5000/driver/assignments", {
+        fetch("/driver/assignments", {
             headers: { "Authorization": `Bearer ${token}` }
         })
             .then(res => res.json())
@@ -203,9 +203,9 @@ export default function DriverPage() {
         const token = localStorage.getItem("token");
         try {
             const [weatherRes, trafficRes, riskRes] = await Promise.all([
-                fetch(`http://127.0.0.1:5000/route/weather/${routeId}`, { headers: { "Authorization": `Bearer ${token}` } }),
-                fetch(`http://127.0.0.1:5000/route/traffic/${routeId}`, { headers: { "Authorization": `Bearer ${token}` } }),
-                fetch(`http://127.0.0.1:5000/route/combined_risk/${routeId}`, { headers: { "Authorization": `Bearer ${token}` } })
+                fetch(`/route/weather/${routeId}`, { headers: { "Authorization": `Bearer ${token}` } }),
+                fetch(`/route/traffic/${routeId}`, { headers: { "Authorization": `Bearer ${token}` } }),
+                fetch(`/route/combined_risk/${routeId}`, { headers: { "Authorization": `Bearer ${token}` } })
             ]);
             const weather = await weatherRes.json();
             const traffic = await trafficRes.json();
@@ -235,7 +235,7 @@ export default function DriverPage() {
         setSelectedAssignment(assignment);
         setStops([]);
         setIsOptimized(false);
-        fetch(`http://127.0.0.1:5000/route/${routeId}/stops`, { headers: { "Authorization": `Bearer ${token}` } })
+        fetch(`/route/${routeId}/stops`, { headers: { "Authorization": `Bearer ${token}` } })
             .then(res => res.json())
             .then(data => {
                 const sortedStops = Array.isArray(data) ? [...data].sort((a, b) => (a.sequence || 0) - (b.sequence || 0)) : [];
@@ -253,7 +253,7 @@ export default function DriverPage() {
 
     const updateStop = useCallback((routeId, stopSequence, status) => {
         const token = localStorage.getItem("token");
-        fetch("http://127.0.0.1:5000/update_stop_status", {
+        fetch("/update_stop_status", {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
             body: JSON.stringify({ route_id: routeId, stop_sequence: stopSequence, status: status, notes: notes })
@@ -277,7 +277,7 @@ export default function DriverPage() {
     const optimizeRoute = async () => {
         const token = localStorage.getItem("token");
         try {
-            const response = await fetch(`http://127.0.0.1:5000/route/optimize/${selectedRoute}`, {
+            const response = await fetch(`/route/optimize/${selectedRoute}`, {
                 method: "POST",
                 headers: { "Authorization": `Bearer ${token}` }
             });
@@ -300,7 +300,7 @@ export default function DriverPage() {
         if (!selectedStop || !selectedAction) return;
 
         const token = localStorage.getItem("token");
-        fetch("http://127.0.0.1:5000/update_stop_status", {
+        fetch("/update_stop_status", {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
             body: JSON.stringify({

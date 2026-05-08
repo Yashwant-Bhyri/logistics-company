@@ -191,7 +191,7 @@ INSERT INTO CUSTOMER (customer_id, password_hash, name, phone, email, address) V
 (5, 'password5', 'Cainiao Qianhai eHub', '400-900-5656', 'qianhai@cainiao.com', 'Qianhai Free Trade Zone, Nanshan District, Shenzhen'),
 (6, 'password6', 'Foxconn Longhua', '0755-28129588', 'logistics-sz@foxconn.com', 'Foxconn Technology Park, Longhua District, Shenzhen'),
 (7, 'password7', 'DJI Innovations', '0755-26656677', 'shipping@dji.com', 'DJI Sky City, Xili, Nanshan District, Shenzhen'),
-(8, 'password8', 'Zhang San', '13800138000', 'zhangsan@gmail.com', 'Room 302, Building 4, Vanke City, Longhua District, Shenzhen'),
+(8, '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8', 'Zhang San', '13800138000', 'customer@example.com', 'Room 302, Building 4, Vanke City, Longhua District, Shenzhen'),
 (9, 'password9', 'Li Si', '13912345678', 'lisi.tech@gmail.com', 'Science Park, Yuehai Street, Nanshan District, Shenzhen'),
 (10, 'password10', 'Wang Wu', '13798765432', 'wangwu@gmail.com', 'Unit 15B, COCO Park Residential, Futian District, Shenzhen'),
 (11, 'password11', 'Tianuo Haoer', '11451419198', 'tianuo.haoer@gmail.com', 'Zhongshan East 1st Road, Huangpu District, Shanghai'),
@@ -478,7 +478,7 @@ INSERT INTO C_ORDER (order_id, sender_id, receiver_id, weight, length, width, he
 
 
 INSERT INTO DRIVER (driver_id, password_hash, name, phone, email, license_class, working_hours, status) VALUES
-(2001, 'password2001', 'Liu Yanghe', '10332668412', 'liuyanghe@qq.com', 'C1', 42.5, 'Active'),
+(2001, '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8', 'Liu Yanghe', '10332668412', 'driver@example.com', 'C1', 42.5, 'Active'),
 (2002, 'password2002', 'Zhao Yiming', '11667500036', 'zhaoyiming@163.com', 'B2', 38.0, 'Active'),
 (2003, 'password2003', 'Sun Chao', '18439183880', 'sunchao@gmail.com', 'B2', 45.0, 'On Leave'),
 (2004, 'password2004', 'Ma Jiaqi', '11458348452', 'majiaqi@qq.com', 'C1', 20.0, 'Active'),
@@ -1260,11 +1260,11 @@ INSERT INTO ORDER_UPDATE (update_id, order_id, driver_id, stop_id, update_type, 
 
 
 INSERT INTO ADMIN (admin_id, password_hash, name, phone, email) VALUES
-(99991, 'password99991', 'System Admin 1', '12540869058', 'admin1@logistics.com'),
-(99992, 'password99992', 'System Admin 2', '14113200541', 'admin2@logistics.com'),
-(99993, 'password99993', 'System Admin 3', '12496041654', 'admin3@logistics.com'),
-(99994, 'password99994', 'System Admin 4', '13489016545', 'admin4@logistics.com'),
-(99995, 'password99995', 'System Admin 5', '17895385044', 'admin5@logistics.com');
+(99991, '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8', 'System Admin 1', '12540869058', 'admin1@logistics.com'),
+(99992, '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8', 'System Admin 2', '14113200541', 'admin2@logistics.com'),
+(99993, '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8', 'System Admin 3', '12496041654', 'admin3@logistics.com'),
+(99994, '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8', 'System Admin 4', '13489016545', 'admin4@logistics.com'),
+(99995, '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8', 'System Admin 5', '17895385044', 'admin5@logistics.com');
 
 
 INSERT INTO ADMIN_OVERRIDE (override_id, delivery_id, admin_id, override_type, reason, old_value, new_value, created_at) VALUES

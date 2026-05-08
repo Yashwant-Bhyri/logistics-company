@@ -20,7 +20,7 @@ export default function DriverSetupPage() {
         }
         setLoading(true);
         try {
-            const res = await fetch("http://localhost:5000/driver/verify_token", {
+            const res = await fetch("/driver/verify_token", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ token })
@@ -51,7 +51,7 @@ export default function DriverSetupPage() {
         }
         setLoading(true);
         try {
-            const res = await fetch("http://localhost:5000/driver/set_password", {
+            const res = await fetch("/driver/set_password", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ token, password })

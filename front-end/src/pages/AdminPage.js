@@ -32,11 +32,70 @@ export default function AdminPage() {
     const [driverSort, setDriverSort] = useState({ field: "driver_id", order: "DESC" });
     const [vehicleSort, setVehicleSort] = useState({ field: "vehicle_id", order: "DESC" });
 
-    // Fetch stops for a specific route
+    const [aiCopilotMessage, setAiCopilotMessage] = useState("");
+    const [aiCopilotAnswer, setAiCopilotAnswer] = useState("");
+    const [aiCopilotLoading, setAiCopilotLoading] = useState(false);
+    const [aiCopilotIntent, setAiCopilotIntent] = useState("");
+    const [aiCopilotRaw, setAiCopilotRaw] = useState(null);
+    const [aiCopilotErr, setAiCopilotErr] = useState("");
+    const [chatInput, setChatInput] = useState("");
+    const [chatBusy, setChatBusy] = useState(false);
+    const [chatErr, setChatErr] = useState("");
+    const [chatMessages, setChatMessages] = useState([
+        {
+            role: "assistant",
+            text: "I’m your Operations AI chatbot. Ask about today’s delivery capacity, control-tower risks, or auto-routing for an order ID."
+        }
+    ]);
+    const [aiInsightsDays, setAiInsightsDays] = useState(7);
+    const [aiInsightsLoading, setAiInsightsLoading] = useState(false);
+    const [aiInsightsSummary, setAiInsightsSummary] = useState("");
+    const [aiInsightsSnapshot, setAiInsightsSnapshot] = useState(null);
+    const [aiInsightsErr, setAiInsightsErr] = useState("");
+    const [recommendOrderId, setRecommendOrderId] = useState("");
+    const [recommendBusy, setRecommendBusy] = useState(false);
+    const [recommendErr, setRecommendErr] = useState("");
+    const [recommendReasoning, setRecommendReasoning] = useState("");
+    const [recommendPayload, setRecommendPayload] = useState(null);
+
+    const [notifDraftOrderId, setNotifDraftOrderId] = useState("");
+    const [notifDraftChannel, setNotifDraftChannel] = useState("email");
+    const [notifDraftSubject, setNotifDraftSubject] = useState("");
+    const [notifDraftBody, setNotifDraftBody] = useState("");
+    const [notifDraftBusy, setNotifDraftBusy] = useState(false);
+    const [supportParticipantType, setSupportParticipantType] = useState("customer");
+    const [supportParticipantId, setSupportParticipantId] = useState("");
+    const [supportChatInput, setSupportChatInput] = useState("");
+    const [supportChatBusy, setSupportChatBusy] = useState(false);
+    const [supportChatErr, setSupportChatErr] = useState("");
+    const [supportThread, setSupportThread] = useState([]);
+    const [supportParticipantName, setSupportParticipantName] = useState("");
+
+    const normalizeShowcaseText = (value) => {
+        const text = String(value || "");
+        return text
+            .replace(
+                /This is a simulated notification only\.?\s*No real message was sent\.?/gi,
+                "This update has been logged to the participant conversation timeline."
+            )
+            .replace(/\bfake\b/gi, "demo")
+            .replace(/\bsimulated\b/gi, "system-generated");
+    };
+
+    const forceLogin = (message) => {
+        if (message) {
+            alert(message);
+        }
+        localStorage.removeItem("token");
+        localStorage.removeItem("admin_id");
+        localStorage.removeItem("admin_name");
+        navigate("/login");
+    };
+
     const fetchStopsForRoute = async (routeId) => {
         const token = localStorage.getItem("token");
         try {
-            const res = await fetch(`http://127.0.0.1:5000/admin/routes/${routeId}/stops`, {
+            const res = await fetch(`/admin/routes/${routeId}/stops`, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             const data = await res.json();
@@ -289,29 +348,29 @@ export default function AdminPage() {
 
     const fetchDrivers = async () => {
         const token = localStorage.getItem("token");
-        console.log("Fetching drivers with token:", token);
+        if (!token) {
+            forceLogin("Session expired. Please log in again.");
+            return;
+        }
         try {
-            const res = await fetch("http://127.0.0.1:5000/admin/drivers", {
+            const res = await fetch("/admin/drivers", {
                 headers: { "Authorization": `Bearer ${token}` }
             });
-            console.log("Response status:", res.status);
-
+            if (res.status === 401 || res.status === 403) {
+                forceLogin("Session expired or unauthorized. Please log in as admin again.");
+                return;
+            }
             if (!res.ok) {
                 throw new Error(`HTTP error! status: ${res.status}`);
             }
 
             const data = await res.json();
-            console.log("Drivers data received:", data);
-            console.log("Number of drivers:", data.length);
-
             if (Array.isArray(data)) {
                 setDrivers(data);
             } else {
-                console.error("Data is not an array:", data);
                 setDrivers([]);
             }
         } catch (err) {
-            console.error("Error fetching drivers:", err);
             alert("Failed to fetch drivers: " + err.message);
             setDrivers([]);
         }
@@ -320,7 +379,7 @@ export default function AdminPage() {
     const createDriver = async () => {
         const token = localStorage.getItem("token");
         try {
-            const res = await fetch("http://127.0.0.1:5000/admin/drivers", {
+            const res = await fetch("/admin/drivers", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
                 body: JSON.stringify(driverForm)
@@ -343,7 +402,7 @@ export default function AdminPage() {
     const updateDriver = async () => {
         const token = localStorage.getItem("token");
         try {
-            const res = await fetch(`http://127.0.0.1:5000/admin/drivers/${editingDriver.driver_id}`, {
+            const res = await fetch(`/admin/drivers/${editingDriver.driver_id}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
                 body: JSON.stringify(driverForm)
@@ -368,7 +427,7 @@ export default function AdminPage() {
         if (!window.confirm("Delete this driver?")) return;
         const token = localStorage.getItem("token");
         try {
-            const res = await fetch(`http://127.0.0.1:5000/admin/drivers/${driverId}`, {
+            const res = await fetch(`/admin/drivers/${driverId}`, {
                 method: "DELETE",
                 headers: { "Authorization": `Bearer ${token}` }
             });
@@ -383,7 +442,7 @@ export default function AdminPage() {
     const resendToken = async (driverId) => {
         const token = localStorage.getItem("token");
         try {
-            const res = await fetch(`http://127.0.0.1:5000/admin/drivers/${driverId}/resend_token`, {
+            const res = await fetch(`/admin/drivers/${driverId}/resend_token`, {
                 method: "POST",
                 headers: { "Authorization": `Bearer ${token}` }
             });
@@ -400,7 +459,7 @@ export default function AdminPage() {
     const fetchAvailableDrivers = async () => {
         const token = localStorage.getItem("token");
         try {
-            const res = await fetch("http://127.0.0.1:5000/admin/available_drivers", {
+            const res = await fetch("/admin/available_drivers", {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             const data = await res.json();
@@ -414,7 +473,7 @@ export default function AdminPage() {
     const fetchAvailableVehicles = async () => {
         const token = localStorage.getItem("token");
         try {
-            const res = await fetch("http://127.0.0.1:5000/admin/available_vehicles", {
+            const res = await fetch("/admin/available_vehicles", {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             const data = await res.json();
@@ -426,8 +485,11 @@ export default function AdminPage() {
     };
 
     useEffect(() => {
-        console.log("Active tab changed to:", activeTab);
-
+        const token = localStorage.getItem("token");
+        if (!token) {
+            forceLogin("Session expired. Please log in again.");
+            return;
+        }
         const adminIdStorage = localStorage.getItem("admin_id");
         const adminNameStorage = localStorage.getItem("admin_name");
         if (adminIdStorage) setAdminId(adminIdStorage);
@@ -444,7 +506,7 @@ export default function AdminPage() {
             const refreshVehicles = async () => {
                 const token = localStorage.getItem("token");
                 try {
-                    const res = await fetch("http://127.0.0.1:5000/admin/vehicles", {
+                    const res = await fetch("/admin/vehicles", {
                         headers: { "Authorization": `Bearer ${token}` }
                     });
                     const data = await res.json();
@@ -464,7 +526,7 @@ export default function AdminPage() {
     const fetchOrders = async () => {
         const token = localStorage.getItem("token");
         try {
-            const res = await fetch("http://127.0.0.1:5000/orders", {
+            const res = await fetch("/orders", {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             const data = await res.json();
@@ -536,47 +598,79 @@ export default function AdminPage() {
 
     const fetchData = async () => {
         const token = localStorage.getItem("token");
+        if (!token) {
+            forceLogin("Session expired. Please log in again.");
+            return;
+        }
         try {
             if (activeTab === "routes") {
-                const res = await fetch("http://127.0.0.1:5000/admin/routes", {
+                const res = await fetch("/admin/routes", {
                     headers: { "Authorization": `Bearer ${token}` }
                 });
+                if (res.status === 401 || res.status === 403) {
+                    forceLogin("Session expired or unauthorized. Please log in as admin again.");
+                    return;
+                }
                 const data = await res.json();
                 setRoutes(Array.isArray(data) ? data : []);
             } else if (activeTab === "stops" && selectedRoute) {
-                const res = await fetch(`http://127.0.0.1:5000/admin/routes/${selectedRoute}/stops`, {
+                const res = await fetch(`/admin/routes/${selectedRoute}/stops`, {
                     headers: { "Authorization": `Bearer ${token}` }
                 });
+                if (res.status === 401 || res.status === 403) {
+                    forceLogin("Session expired or unauthorized. Please log in as admin again.");
+                    return;
+                }
                 const data = await res.json();
                 setStops(Array.isArray(data) ? data : []);
             } else if (activeTab === "vehicles") {
-                const res = await fetch("http://127.0.0.1:5000/admin/vehicles", {
+                const res = await fetch("/admin/vehicles", {
                     headers: { "Authorization": `Bearer ${token}` }
                 });
+                if (res.status === 401 || res.status === 403) {
+                    forceLogin("Session expired or unauthorized. Please log in as admin again.");
+                    return;
+                }
                 const data = await res.json();
                 setVehicles(Array.isArray(data) ? data : []);
             } else if (activeTab === "assignments") {
-                const res = await fetch("http://127.0.0.1:5000/admin/assignments", {
+                const res = await fetch("/admin/assignments", {
                     headers: { "Authorization": `Bearer ${token}` }
                 });
+                if (res.status === 401 || res.status === 403) {
+                    forceLogin("Session expired or unauthorized. Please log in as admin again.");
+                    return;
+                }
                 const data = await res.json();
                 setAssignments(Array.isArray(data) ? data : []);
             } else if (activeTab === "order_updates") {
-                const res = await fetch("http://127.0.0.1:5000/admin/order_updates", {
+                const res = await fetch("/admin/order_updates", {
                     headers: { "Authorization": `Bearer ${token}` }
                 });
+                if (res.status === 401 || res.status === 403) {
+                    forceLogin("Session expired or unauthorized. Please log in as admin again.");
+                    return;
+                }
                 const data = await res.json();
                 setOrderUpdates(Array.isArray(data) ? data : []);
             } else if (activeTab === "condition_reports") {
-                const res = await fetch("http://127.0.0.1:5000/admin/condition_reports", {
+                const res = await fetch("/admin/condition_reports", {
                     headers: { "Authorization": `Bearer ${token}` }
                 });
+                if (res.status === 401 || res.status === 403) {
+                    forceLogin("Session expired or unauthorized. Please log in as admin again.");
+                    return;
+                }
                 const data = await res.json();
                 setConditionReports(Array.isArray(data) ? data : []);
             } else if (activeTab === "admin_overrides") {
-                const res = await fetch("http://127.0.0.1:5000/admin/overrides", {
+                const res = await fetch("/admin/overrides", {
                     headers: { "Authorization": `Bearer ${token}` }
                 });
+                if (res.status === 401 || res.status === 403) {
+                    forceLogin("Session expired or unauthorized. Please log in as admin again.");
+                    return;
+                }
                 const data = await res.json();
                 setAdminOverrides(Array.isArray(data) ? data : []);
             }
@@ -589,10 +683,7 @@ export default function AdminPage() {
     };
 
     const handleLogout = () => {
-        localStorage.removeItem("token");
-        localStorage.removeItem("admin_id");
-        localStorage.removeItem("admin_name");
-        navigate("/login");
+        forceLogin("");
     };
 
     // Filter functions
@@ -625,7 +716,7 @@ export default function AdminPage() {
     const createStop = async () => {
         const token = localStorage.getItem("token");
         try {
-            const res = await fetch("http://127.0.0.1:5000/admin/stops", {
+            const res = await fetch("/admin/stops", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
                 body: JSON.stringify({ ...stopForm, route_id: selectedRoute })
@@ -648,7 +739,7 @@ export default function AdminPage() {
     const updateStop = async () => {
         const token = localStorage.getItem("token");
         try {
-            const res = await fetch(`http://127.0.0.1:5000/admin/stops/${editingStop.stop_id}`, {
+            const res = await fetch(`/admin/stops/${editingStop.stop_id}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
                 body: JSON.stringify(stopForm)
@@ -669,7 +760,7 @@ export default function AdminPage() {
         if (!window.confirm("Delete this stop?")) return;
         const token = localStorage.getItem("token");
         try {
-            const res = await fetch(`http://127.0.0.1:5000/admin/stops/${stopId}`, {
+            const res = await fetch(`/admin/stops/${stopId}`, {
                 method: "DELETE",
                 headers: { "Authorization": `Bearer ${token}` }
             });
@@ -685,7 +776,7 @@ export default function AdminPage() {
     const createVehicle = async () => {
         const token = localStorage.getItem("token");
         try {
-            const res = await fetch("http://127.0.0.1:5000/admin/vehicles", {
+            const res = await fetch("/admin/vehicles", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
                 body: JSON.stringify(vehicleForm)
@@ -705,7 +796,7 @@ export default function AdminPage() {
     const updateVehicle = async () => {
         const token = localStorage.getItem("token");
         try {
-            const res = await fetch(`http://127.0.0.1:5000/admin/vehicles/${editingVehicle.vehicle_id}`, {
+            const res = await fetch(`/admin/vehicles/${editingVehicle.vehicle_id}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
                 body: JSON.stringify(vehicleForm)
@@ -726,7 +817,7 @@ export default function AdminPage() {
         if (!window.confirm("Delete this vehicle?")) return;
         const token = localStorage.getItem("token");
         try {
-            const res = await fetch(`http://127.0.0.1:5000/admin/vehicles/${vehicleId}`, {
+            const res = await fetch(`/admin/vehicles/${vehicleId}`, {
                 method: "DELETE",
                 headers: { "Authorization": `Bearer ${token}` }
             });
@@ -764,7 +855,7 @@ export default function AdminPage() {
         }
 
         try {
-            const res = await fetch("http://127.0.0.1:5000/admin/assignments", {
+            const res = await fetch("/admin/assignments", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
                 body: JSON.stringify({
@@ -790,7 +881,7 @@ export default function AdminPage() {
     const completeAssignment = async (assignmentId) => {
         const token = localStorage.getItem("token");
         try {
-            const res = await fetch(`http://127.0.0.1:5000/admin/assignments/${assignmentId}/complete`, {
+            const res = await fetch(`/admin/assignments/${assignmentId}/complete`, {
                 method: "PUT",
                 headers: { "Authorization": `Bearer ${token}` }
             });
@@ -813,7 +904,7 @@ export default function AdminPage() {
         }
 
         try {
-            const res = await fetch("http://127.0.0.1:5000/admin/overrides", {
+            const res = await fetch("/admin/overrides", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
                 body: JSON.stringify({
@@ -892,7 +983,7 @@ export default function AdminPage() {
         const token = localStorage.getItem("token");
 
         try {
-            const res = await fetch("http://127.0.0.1:5000/admin/override_status", {
+            const res = await fetch("/admin/override_status", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -921,6 +1012,308 @@ export default function AdminPage() {
         }
     };
 
+    const askAdminCopilot = async () => {
+        const msg = aiCopilotMessage.trim();
+        if (!msg) {
+            alert("Enter a question for the ops copilot.");
+            return;
+        }
+        const token = localStorage.getItem("token");
+        setAiCopilotLoading(true);
+        setAiCopilotErr("");
+        setAiCopilotAnswer("");
+        setAiCopilotIntent("");
+        setAiCopilotRaw(null);
+        try {
+            const res = await fetch("/api/ai/admin-copilot", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({ message: msg })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setAiCopilotErr(data.error || `Request failed (${res.status})`);
+                return;
+            }
+            setAiCopilotAnswer(data.answer || "");
+            setAiCopilotIntent(data.intent || "");
+            setAiCopilotRaw(data.tool_raw ?? null);
+        } catch (e) {
+            setAiCopilotErr(String(e.message || e));
+        } finally {
+            setAiCopilotLoading(false);
+        }
+    };
+
+    const sendOpsChat = async (promptOverride) => {
+        const msg = (promptOverride ?? chatInput).trim();
+        if (!msg) return;
+        const token = localStorage.getItem("token");
+        const userMessage = { role: "user", text: msg };
+        const nextHistory = [...chatMessages, userMessage];
+        setChatMessages(nextHistory);
+        setChatInput("");
+        setChatBusy(true);
+        setChatErr("");
+        try {
+            const res = await fetch("/api/ai/ops-chatbot", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    message: msg,
+                    history: nextHistory.map(m => ({ role: m.role, content: m.text }))
+                })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setChatErr(data.error || `Chat failed (${res.status})`);
+                setChatMessages(prev => [
+                    ...prev,
+                    { role: "assistant", text: `I hit an error: ${data.error || `HTTP ${res.status}`}` }
+                ]);
+                return;
+            }
+            const answer = data.answer || "(No answer returned)";
+            setChatMessages(prev => [
+                ...prev,
+                {
+                    role: "assistant",
+                    text: answer,
+                    intent: data.intent || "",
+                    raw: data.tool_raw ?? null
+                }
+            ]);
+        } catch (e) {
+            const m = String(e.message || e);
+            setChatErr(m);
+            setChatMessages(prev => [...prev, { role: "assistant", text: `I hit an error: ${m}` }]);
+        } finally {
+            setChatBusy(false);
+        }
+    };
+
+    const runAdminInsights = async () => {
+        const token = localStorage.getItem("token");
+        setAiInsightsLoading(true);
+        setAiInsightsErr("");
+        setAiInsightsSummary("");
+        setAiInsightsSnapshot(null);
+        try {
+            const res = await fetch("/api/ai/admin-insights", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({ days: aiInsightsDays })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setAiInsightsErr(data.error || `Insights failed (${res.status})`);
+                return;
+            }
+            setAiInsightsSummary(data.summary || "");
+            setAiInsightsSnapshot(data.snapshot || null);
+        } catch (e) {
+            setAiInsightsErr(String(e.message || e));
+        } finally {
+            setAiInsightsLoading(false);
+        }
+    };
+
+    const runAssignmentRecommendation = async () => {
+        const token = localStorage.getItem("token");
+        const oid = parseInt(recommendOrderId, 10);
+        if (Number.isNaN(oid)) {
+            alert("Enter a numeric order ID for recommendation.");
+            return;
+        }
+        setRecommendBusy(true);
+        setRecommendErr("");
+        setRecommendReasoning("");
+        setRecommendPayload(null);
+        try {
+            const res = await fetch("/api/ai/assignment-recommendation", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({ order_id: oid })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setRecommendErr(data.error || `Recommendation failed (${res.status})`);
+                return;
+            }
+            if (data.error) {
+                setRecommendErr(data.error);
+                setRecommendPayload(data);
+                return;
+            }
+            setRecommendReasoning(data.reasoning || "");
+            setRecommendPayload(data.recommendation || data);
+        } catch (e) {
+            setRecommendErr(String(e.message || e));
+        } finally {
+            setRecommendBusy(false);
+        }
+    };
+
+    const generateAdminNotificationDraft = async () => {
+        const oid = parseInt(notifDraftOrderId, 10);
+        if (Number.isNaN(oid)) {
+            alert("Enter a numeric order ID.");
+            return;
+        }
+        const token = localStorage.getItem("token");
+        setNotifDraftBusy(true);
+        setNotifDraftSubject("");
+        setNotifDraftBody("");
+        try {
+            const res = await fetch("/api/ai/notification-draft", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    order_id: oid,
+                    channel: notifDraftChannel,
+                    tone: "professional concise",
+                    template: "status_update_general"
+                })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                alert(data.error || `Draft failed (${res.status})`);
+                return;
+            }
+            setNotifDraftSubject(data.subject || "");
+            setNotifDraftBody(data.body || "");
+        } catch (e) {
+            alert(String(e.message || e));
+        } finally {
+            setNotifDraftBusy(false);
+        }
+    };
+
+    const loadSupportThread = async () => {
+        const pid = parseInt(supportParticipantId, 10);
+        if (Number.isNaN(pid)) {
+            alert("Enter a numeric participant ID.");
+            return;
+        }
+        const token = localStorage.getItem("token");
+        setSupportChatErr("");
+        try {
+            const res = await fetch(
+                `/api/ai/support/thread?participant_type=${encodeURIComponent(supportParticipantType)}&participant_id=${pid}`,
+                {
+                    headers: { "Authorization": `Bearer ${token}` }
+                }
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setSupportChatErr(data.error || `Thread fetch failed (${res.status})`);
+                return;
+            }
+            setSupportParticipantName(data.participant_name || "");
+            setSupportThread(Array.isArray(data.messages) ? data.messages : []);
+        } catch (e) {
+            setSupportChatErr(String(e.message || e));
+        }
+    };
+
+    const fakeSendDraft = async () => {
+        const pid = parseInt(supportParticipantId, 10);
+        if (Number.isNaN(pid)) {
+            alert("Enter a numeric participant ID.");
+            return;
+        }
+        const body = (notifDraftBody || "").trim();
+        if (!body) {
+            alert("Generate or write a draft message first.");
+            return;
+        }
+        const token = localStorage.getItem("token");
+        setSupportChatBusy(true);
+        setSupportChatErr("");
+        try {
+            const payload = {
+                participant_type: supportParticipantType,
+                participant_id: pid,
+                channel: notifDraftChannel,
+                subject: notifDraftSubject,
+                message: body,
+                order_id: notifDraftOrderId ? parseInt(notifDraftOrderId, 10) : null
+            };
+            const res = await fetch("/api/ai/support/fake-send", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setSupportChatErr(data.error || `Message dispatch failed (${res.status})`);
+                return;
+            }
+            await loadSupportThread();
+        } catch (e) {
+            setSupportChatErr(String(e.message || e));
+        } finally {
+            setSupportChatBusy(false);
+        }
+    };
+
+    const sendSupportBotMessage = async () => {
+        const pid = parseInt(supportParticipantId, 10);
+        if (Number.isNaN(pid)) {
+            alert("Enter a numeric participant ID.");
+            return;
+        }
+        const msg = supportChatInput.trim();
+        if (!msg) return;
+        const token = localStorage.getItem("token");
+        setSupportChatBusy(true);
+        setSupportChatErr("");
+        try {
+            const res = await fetch("/api/ai/support/chat", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    participant_type: supportParticipantType,
+                    participant_id: pid,
+                    message: msg
+                })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setSupportChatErr(data.error || `Support chat failed (${res.status})`);
+                return;
+            }
+            setSupportParticipantName(data.participant_name || supportParticipantName);
+            setSupportChatInput("");
+            await loadSupportThread();
+        } catch (e) {
+            setSupportChatErr(String(e.message || e));
+        } finally {
+            setSupportChatBusy(false);
+        }
+    };
+
     if (loading) return <div style={styles.loading}>Loading admin panel...</div>;
     if (error) return <div style={styles.error}>Error: {error}</div>;
 
@@ -944,6 +1337,7 @@ export default function AdminPage() {
                 <button onClick={() => setActiveTab("order_updates")} style={{ ...styles.tab, ...(activeTab === "order_updates" ? styles.activeTab : {}) }}>📝 Order Updates</button>
                 <button onClick={() => setActiveTab("condition_reports")} style={{ ...styles.tab, ...(activeTab === "condition_reports" ? styles.activeTab : {}) }}>🌤️ Condition Reports</button>
                 <button onClick={() => setActiveTab("admin_overrides")} style={{ ...styles.tab, ...(activeTab === "admin_overrides" ? styles.activeTab : {}) }}>📝 Admin Overrides</button>
+                <button onClick={() => setActiveTab("ai_hub")} style={{ ...styles.tab, ...(activeTab === "ai_hub" ? styles.activeTab : {}) }}>🤖 AI Assistant</button>
             </div>
 
             {/* Orders Tab */}
@@ -1843,6 +2237,336 @@ export default function AdminPage() {
                         {getFilteredOverrides().length === 0 && (
                             <p style={{ textAlign: "center", padding: "20px", color: "#666" }}>No admin overrides found.</p>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {activeTab === "ai_hub" && (
+                <div style={styles.section}>
+                    <h2 style={{ marginTop: 0 }}>💬 Operations chatbot</h2>
+                    <p style={{ fontSize: 14, color: "#555", maxWidth: 900 }}>
+                        Ask advanced logistics questions in conversation mode: delivery intake capacity, auto shipment routing,
+                        risk incidents, and live operational diagnostics.
+                    </p>
+                    <div style={{ marginBottom: 12 }}>
+                        <button type="button" style={styles.addBtn} onClick={() => navigate("/ops-comms")}>
+                            Open Ops Communication Center
+                        </button>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                        <button type="button" style={styles.quickFilterBtn} disabled={chatBusy} onClick={() => sendOpsChat("How many deliveries can we accept today given current driver and vehicle availability?")}>
+                            Capacity today
+                        </button>
+                        <button type="button" style={styles.quickFilterBtn} disabled={chatBusy} onClick={() => sendOpsChat("Run a control tower risk overview for the last 7 days.")}>
+                            Control tower
+                        </button>
+                        <button type="button" style={styles.quickFilterBtn} disabled={chatBusy} onClick={() => sendOpsChat("Auto-route and recommend assignment for order 1001.")}>
+                            Auto-route order 1001
+                        </button>
+                    </div>
+                    <div style={{ border: "1px solid #d1d5db", borderRadius: 10, backgroundColor: "#f8fafc", padding: 12, maxHeight: 420, overflowY: "auto" }}>
+                        {chatMessages.map((m, idx) => (
+                            <div
+                                key={idx}
+                                style={{
+                                    marginBottom: 10,
+                                    display: "flex",
+                                    justifyContent: m.role === "user" ? "flex-end" : "flex-start"
+                                }}
+                            >
+                                <div
+                                    style={{
+                                        maxWidth: "84%",
+                                        whiteSpace: "pre-wrap",
+                                        fontSize: 14,
+                                        lineHeight: 1.4,
+                                        padding: "10px 12px",
+                                        borderRadius: 10,
+                                        backgroundColor: m.role === "user" ? "#dbeafe" : "#ffffff",
+                                        border: "1px solid #cbd5e1"
+                                    }}
+                                >
+                                    <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>
+                                        {m.role === "user" ? "You" : "Ops Bot"}{m.intent ? ` · intent: ${m.intent}` : ""}
+                                    </div>
+                                    {m.text}
+                                    {m.raw ? (
+                                        <details style={{ marginTop: 8 }}>
+                                            <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 600 }}>Tool payload</summary>
+                                            <pre style={{ fontSize: 11, overflow: "auto", maxHeight: 180, marginTop: 6, backgroundColor: "#0f172a", color: "#e2e8f0", padding: 8, borderRadius: 8 }}>
+                                                {JSON.stringify(m.raw, null, 2)}
+                                            </pre>
+                                        </details>
+                                    ) : null}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                        <textarea
+                            rows={3}
+                            value={chatInput}
+                            onChange={(e) => setChatInput(e.target.value)}
+                            placeholder="Example: How many deliveries can we still accept today? / Auto-route order 1012."
+                            style={{ ...styles.textarea, width: "100%", marginTop: 0 }}
+                            disabled={chatBusy}
+                        />
+                        <button
+                            type="button"
+                            style={{ ...styles.overrideBtn, minWidth: 120, alignSelf: "flex-end" }}
+                            disabled={chatBusy}
+                            onClick={() => sendOpsChat()}
+                        >
+                            {chatBusy ? "⏳ Sending..." : "Send"}
+                        </button>
+                    </div>
+                    {chatErr ? <p style={{ marginTop: 8, color: "#c0392b" }}>{chatErr}</p> : null}
+
+                    <hr style={{ margin: "28px 0", borderColor: "#e2e8f0" }} />
+
+                    <h2 style={{ marginTop: 0 }}>🤖 Operations copilot</h2>
+                    <p style={{ fontSize: 14, color: "#555", maxWidth: 900 }}>
+                        Ask plain-language questions. The assistant classifies intent, runs audited database queries only (no arbitrary SQL),
+                        then summarizes the results for you.
+                    </p>
+
+                    <textarea
+                        placeholder="Examples: Which drivers are currently available? / Show pending assignments. / Recent order updates?"
+                        rows={5}
+                        value={aiCopilotMessage}
+                        onChange={(e) => setAiCopilotMessage(e.target.value)}
+                        style={{ ...styles.textarea, width: "100%", marginTop: 10 }}
+                        disabled={aiCopilotLoading}
+                    />
+                    <div style={{ marginTop: 10 }}>
+                        <button type="button" onClick={askAdminCopilot} disabled={aiCopilotLoading} style={styles.overrideBtn}>
+                            {aiCopilotLoading ? "⏳ Working..." : "Run copilot"}
+                        </button>
+                    </div>
+
+                    {aiCopilotErr && (
+                        <p style={{ marginTop: 12, color: "#c0392b" }}>{aiCopilotErr}</p>
+                    )}
+                    {(aiCopilotIntent || aiCopilotAnswer) && (
+                        <div style={{ marginTop: 16, padding: 14, backgroundColor: "#f8fafc", borderRadius: 8, border: "1px solid #dbeafe" }}>
+                            {aiCopilotIntent ? (
+                                <p style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}><strong>Intent:</strong> {aiCopilotIntent}</p>
+                            ) : null}
+                            <pre style={{ whiteSpace: "pre-wrap", fontFamily: "system-ui,sans-serif", fontSize: 14, margin: 0 }}>
+                                {aiCopilotAnswer || "(no summary)"}
+                            </pre>
+                        </div>
+                    )}
+                    {aiCopilotRaw != null && (
+                        <details style={{ marginTop: 12 }}>
+                            <summary style={{ cursor: "pointer", fontWeight: 600 }}>Raw tool payload (advanced)</summary>
+                            <pre style={{ fontSize: 11, overflow: "auto", maxHeight: 320, marginTop: 8, backgroundColor: "#0f172a", color: "#e2e8f0", padding: 10, borderRadius: 8 }}>
+                                {JSON.stringify(aiCopilotRaw, null, 2)}
+                            </pre>
+                        </details>
+                    )}
+
+                    <hr style={{ margin: "32px 0", borderColor: "#e2e8f0" }} />
+
+                    <h3>🚨 Operations insights scan</h3>
+                    <p style={{ fontSize: 14, color: "#555", maxWidth: 900 }}>
+                        Analyze recent operating metrics and surface top risks with prioritized actions.
+                    </p>
+                    <div style={{ ...styles.formRow, alignItems: "flex-end", marginTop: 10 }}>
+                        <label style={{ display: "flex", flexDirection: "column", fontSize: 13 }}>
+                            Lookback window (days)
+                            <input
+                                type="number"
+                                min="1"
+                                max="60"
+                                value={aiInsightsDays}
+                                onChange={(e) => setAiInsightsDays(e.target.value)}
+                                style={{ ...styles.select, padding: "8px 12px", minWidth: 160 }}
+                                disabled={aiInsightsLoading}
+                            />
+                        </label>
+                        <button type="button" onClick={runAdminInsights} disabled={aiInsightsLoading} style={styles.overrideBtn}>
+                            {aiInsightsLoading ? "⏳ Scanning..." : "Run insights scan"}
+                        </button>
+                    </div>
+                    {aiInsightsErr && (
+                        <p style={{ marginTop: 12, color: "#c0392b" }}>{aiInsightsErr}</p>
+                    )}
+                    {(aiInsightsSummary || aiInsightsSnapshot) && (
+                        <div style={{ marginTop: 16, padding: 14, backgroundColor: "#fff7ed", borderRadius: 8, border: "1px solid #fed7aa" }}>
+                            {aiInsightsSummary ? (
+                                <pre style={{ whiteSpace: "pre-wrap", fontFamily: "system-ui,sans-serif", fontSize: 14, margin: 0 }}>
+                                    {aiInsightsSummary}
+                                </pre>
+                            ) : null}
+                            {aiInsightsSnapshot ? (
+                                <details style={{ marginTop: 10 }}>
+                                    <summary style={{ cursor: "pointer", fontWeight: 600 }}>Snapshot metrics</summary>
+                                    <pre style={{ fontSize: 11, overflow: "auto", maxHeight: 300, marginTop: 8, backgroundColor: "#0f172a", color: "#e2e8f0", padding: 10, borderRadius: 8 }}>
+                                        {JSON.stringify(aiInsightsSnapshot, null, 2)}
+                                    </pre>
+                                </details>
+                            ) : null}
+                        </div>
+                    )}
+
+                    <hr style={{ margin: "32px 0", borderColor: "#e2e8f0" }} />
+
+                    <h3>🧭 Assignment recommender</h3>
+                    <p style={{ fontSize: 14, color: "#555", maxWidth: 900 }}>
+                        Get a best-fit driver/vehicle suggestion for an order based on current availability and capacity.
+                    </p>
+                    <div style={{ ...styles.formRow, alignItems: "flex-end", marginTop: 10 }}>
+                        <label style={{ display: "flex", flexDirection: "column", fontSize: 13 }}>
+                            Order ID
+                            <input
+                                type="number"
+                                placeholder="Order ID"
+                                value={recommendOrderId}
+                                onChange={(e) => setRecommendOrderId(e.target.value)}
+                                style={{ ...styles.select, padding: "8px 12px", minWidth: 160 }}
+                                disabled={recommendBusy}
+                            />
+                        </label>
+                        <button type="button" onClick={runAssignmentRecommendation} disabled={recommendBusy} style={styles.addBtn}>
+                            {recommendBusy ? "⏳ Evaluating..." : "Recommend assignment"}
+                        </button>
+                    </div>
+                    {recommendErr && (
+                        <p style={{ marginTop: 12, color: "#c0392b" }}>{recommendErr}</p>
+                    )}
+                    {(recommendReasoning || recommendPayload) && (
+                        <div style={{ marginTop: 16, padding: 14, backgroundColor: "#ecfeff", borderRadius: 8, border: "1px solid #a5f3fc" }}>
+                            {recommendReasoning ? (
+                                <pre style={{ whiteSpace: "pre-wrap", fontFamily: "system-ui,sans-serif", fontSize: 14, margin: "0 0 10px 0" }}>
+                                    {recommendReasoning}
+                                </pre>
+                            ) : null}
+                            {recommendPayload ? (
+                                <pre style={{ fontSize: 11, overflow: "auto", maxHeight: 300, margin: 0, backgroundColor: "#0f172a", color: "#e2e8f0", padding: 10, borderRadius: 8 }}>
+                                    {JSON.stringify(recommendPayload, null, 2)}
+                                </pre>
+                            ) : null}
+                        </div>
+                    )}
+
+                    <hr style={{ margin: "32px 0", borderColor: "#e2e8f0" }} />
+
+                    <h3>✉️ Customer notification draft</h3>
+                    <p style={{ fontSize: 14, color: "#555" }}>
+                        Produce SMS or email copy for an order status update and add it to a participant conversation thread.
+                    </p>
+                    <div style={{ ...styles.formRow, alignItems: "flex-end", marginTop: 10 }}>
+                        <label style={{ display: "flex", flexDirection: "column", fontSize: 13 }}>
+                            Order ID
+                            <input
+                                type="number"
+                                placeholder="Order ID"
+                                value={notifDraftOrderId}
+                                onChange={(e) => setNotifDraftOrderId(e.target.value)}
+                                style={{ ...styles.select, padding: "8px 12px", minWidth: 140 }}
+                            />
+                        </label>
+                        <label style={{ display: "flex", flexDirection: "column", fontSize: 13 }}>
+                            Format
+                            <select
+                                value={notifDraftChannel}
+                                onChange={(e) => setNotifDraftChannel(e.target.value)}
+                                style={{ ...styles.select, padding: "8px 12px" }}
+                                disabled={notifDraftBusy}
+                            >
+                                <option value="email">Email draft</option>
+                                <option value="sms">SMS-length draft</option>
+                            </select>
+                        </label>
+                        <button type="button" onClick={generateAdminNotificationDraft} disabled={notifDraftBusy} style={styles.addBtn}>
+                            {notifDraftBusy ? "⏳ Generating..." : "Generate draft"}
+                        </button>
+                    </div>
+
+                    {(notifDraftSubject || notifDraftBody) && (
+                        <div style={{ marginTop: 16, padding: 14, backgroundColor: "#f0fdf4", borderRadius: 8, border: "1px solid #bbf7d0" }}>
+                            {notifDraftSubject ? <p style={{ margin: "0 0 8px" }}><strong>Subject:</strong> {notifDraftSubject}</p> : null}
+                            <pre style={{ whiteSpace: "pre-wrap", fontFamily: "system-ui,sans-serif", fontSize: 14, margin: 0 }}>
+                                {normalizeShowcaseText(notifDraftBody || "")}
+                            </pre>
+                        </div>
+                    )}
+
+                    <div style={{ marginTop: 18, padding: 14, backgroundColor: "#fff7ed", borderRadius: 8, border: "1px solid #fed7aa" }}>
+                        <h4 style={{ margin: "0 0 8px" }}>📨 Customer/Driver conversation threads</h4>
+                        <p style={{ fontSize: 13, color: "#555", margin: "0 0 10px" }}>
+                            Send draft updates into a participant timeline and continue support chat with contextual replies.
+                        </p>
+                        <div style={{ ...styles.formRow, alignItems: "flex-end" }}>
+                            <label style={{ display: "flex", flexDirection: "column", fontSize: 13 }}>
+                                Participant type
+                                <select
+                                    value={supportParticipantType}
+                                    onChange={(e) => setSupportParticipantType(e.target.value)}
+                                    style={{ ...styles.select, padding: "8px 12px" }}
+                                    disabled={supportChatBusy}
+                                >
+                                    <option value="customer">Customer</option>
+                                    <option value="driver">Driver</option>
+                                </select>
+                            </label>
+                            <label style={{ display: "flex", flexDirection: "column", fontSize: 13 }}>
+                                Participant ID
+                                <input
+                                    type="number"
+                                    placeholder={supportParticipantType === "customer" ? "e.g. 8" : "e.g. 2001"}
+                                    value={supportParticipantId}
+                                    onChange={(e) => setSupportParticipantId(e.target.value)}
+                                    style={{ ...styles.select, padding: "8px 12px", minWidth: 140 }}
+                                    disabled={supportChatBusy}
+                                />
+                            </label>
+                            <button type="button" onClick={loadSupportThread} disabled={supportChatBusy} style={styles.quickFilterBtn}>
+                                Load thread
+                            </button>
+                            <button type="button" onClick={fakeSendDraft} disabled={supportChatBusy || !(notifDraftBody || "").trim()} style={styles.addBtn}>
+                                {supportChatBusy ? "⏳ Working..." : "Send draft to thread"}
+                            </button>
+                        </div>
+
+                        <div style={{ marginTop: 10, border: "1px solid #e2e8f0", borderRadius: 8, backgroundColor: "#fff", padding: 10, maxHeight: 260, overflowY: "auto" }}>
+                            {supportThread.length === 0 ? (
+                                <p style={{ margin: 0, color: "#64748b", fontSize: 13 }}>
+                                    No messages yet for this participant. Load a thread, send a draft, or start chat.
+                                </p>
+                            ) : (
+                                supportThread.map((m) => (
+                                    <div key={m.message_id} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: "1px dashed #e2e8f0" }}>
+                                        <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>
+                                            {m.actor_role} · {m.direction} · {m.channel || "chat"} · {m.created_at}
+                                        </div>
+                                        {m.subject ? <div style={{ fontSize: 12, marginBottom: 3 }}><strong>Subject:</strong> {m.subject}</div> : null}
+                                        <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{normalizeShowcaseText(m.body)}</div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                        <div style={{ marginTop: 10 }}>
+                            <label style={{ display: "block", fontSize: 13, marginBottom: 6 }}>
+                                Support bot chat {supportParticipantName ? `with ${supportParticipantName}` : ""}
+                            </label>
+                            <div style={{ display: "flex", gap: 8 }}>
+                                <textarea
+                                    rows={3}
+                                    placeholder="Type a support message context, e.g. customer asks for ETA clarity..."
+                                    value={supportChatInput}
+                                    onChange={(e) => setSupportChatInput(e.target.value)}
+                                    style={{ ...styles.textarea, width: "100%", marginTop: 0 }}
+                                    disabled={supportChatBusy}
+                                />
+                                <button type="button" onClick={sendSupportBotMessage} disabled={supportChatBusy} style={{ ...styles.overrideBtn, minWidth: 120, alignSelf: "flex-end" }}>
+                                    {supportChatBusy ? "⏳ Sending..." : "Send chat"}
+                                </button>
+                            </div>
+                        </div>
+                        {supportChatErr ? <p style={{ marginTop: 8, color: "#c0392b" }}>{supportChatErr}</p> : null}
                     </div>
                 </div>
             )}

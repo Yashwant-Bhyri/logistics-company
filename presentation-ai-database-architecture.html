@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI & Ops Layer — Database-Centric Architecture (Logistics)</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --border: #334155;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #0d9488;
+      --accent-dim: #134e4a;
+      --db: #1e3a5f;
+      --get: #22c55e;
+      --post: #3b82f6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: linear-gradient(160deg, #0c1222 0%, var(--bg) 40%, #172033 100%);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 28px 20px 40px;
+      line-height: 1.45;
+    }
+    h1 {
+      text-align: center;
+      font-size: clamp(1.15rem, 2.5vw, 1.65rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin: 0 0 6px;
+    }
+    .subtitle {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.88rem;
+      max-width: 920px;
+      margin: 0 auto 26px;
+    }
+    .flow-hint {
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-bottom: 18px;
+    }
+    .flow-hint span { color: var(--accent); font-weight: 600; }
+
+    .stack {
+      max-width: 1180px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      position: relative;
+    }
+
+    .layer {
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px 18px;
+      margin-bottom: 14px;
+      position: relative;
+      background: var(--panel);
+    }
+    .layer::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: -16px;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 10px solid transparent;
+      border-right: 10px solid transparent;
+      border-top: 12px solid var(--muted);
+      opacity: 0.35;
+    }
+    .layer:last-child::after { display: none; }
+
+    .layer-title {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--accent);
+      font-weight: 800;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .layer-title .tag {
+      background: var(--accent-dim);
+      color: #99f6e4;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.62rem;
+      letter-spacing: 0.06em;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+    }
+    .box {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .box h4 {
+      margin: 0 0 6px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    ul {
+      margin: 0;
+      padding-left: 16px;
+      font-size: 0.78rem;
+      color: var(--text);
+    }
+    code, .mono {
+      font-family: ui-monospace, "Cascadia Code", "SF Mono", Menlo, monospace;
+      font-size: 0.72rem;
+    }
+    .endpoints {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 800px) { .endpoints { grid-template-columns: 1fr; } }
+
+    .method-get { color: var(--get); font-weight: 700; font-size: 0.65rem; }
+    .method-post { color: var(--post); font-weight: 700; font-size: 0.65rem; }
+
+    .ep-list {
+      margin: 4px 0 0;
+      padding: 0;
+      list-style: none;
+      font-size: 0.7rem;
+    }
+    .ep-list li {
+      padding: 2px 0;
+      border-bottom: 1px dashed rgba(148, 163, 184, 0.15);
+    }
+
+    /* Database layer styling */
+    .layer.db-layer {
+      background: linear-gradient(180deg, #1a3050 0%, var(--db) 100%);
+      border-color: #2563eb55;
+    }
+    .sql-cols {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .sql-block {
+      background: rgba(0, 0, 0, 0.35);
+      border-radius: 6px;
+      padding: 8px 10px;
+      border-left: 4px solid;
+    }
+    .sql-block.a { border-left-color: #22c55e; }
+    .sql-block.b { border-left-color: #eab308; }
+    .sql-block.c { border-left-color: #a855f7; }
+    .sql-block.d { border-left-color: #f97316; }
+    .sql-block h5 {
+      margin: 0 0 6px;
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .sql-block pre {
+      margin: 0;
+      white-space: pre-wrap;
+      font-size: 0.65rem;
+      color: #cbd5e1;
+      line-height: 1.35;
+    }
+
+    .footnote {
+      text-align: center;
+      margin-top: 22px;
+      font-size: 0.72rem;
+      color: var(--muted);
+      max-width: 900px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .footnote strong { color: #99f6e4; }
+  </style>
+</head>
+<body>
+
+  <h1>Database-Centric Architecture: AI Assistant &amp; Ops Communication Center</h1>
+  <p class="subtitle">
+    Normalized <strong style="color:#99f6e4">MySQL</strong> is the source of truth.
+    The LLM <strong style="color:#fcd34d">never</strong> generates arbitrary SQL — it routes to
+    <strong>parameterized query families</strong> and summarizes <strong>retrieved relational facts</strong>.
+  </p>
+  <p class="flow-hint">
+    Flow: Browser <span>→</span> REST <span>→</span> Flask core <span>→</span> <span>Parameterized SQL</span> / Transactions <span>→</span> MySQL
+    &nbsp;&nbsp;|&nbsp;&nbsp; Response path reverses · LLM calls (OpenRouter) only after structured retrieval
+  </p>
+
+  <div class="stack">
+
+    <!-- LAYER 1 -->
+    <section class="layer">
+      <div class="layer-title">
+        Layer 1 — Frontend (React SPA)
+        <span class="tag">Create React App · dev proxy → Flask :5000</span>
+      </div>
+      <div class="grid-3">
+        <div class="box">
+          <h4>Pages &amp; AI surfaces</h4>
+          <ul>
+            <li><strong>CustomerPage</strong> — Tracking assistant, notification draft UI</li>
+            <li><strong>AdminPage</strong> — Copilot, ops chatbot, insights, assignment reco., support sandbox</li>
+            <li><strong>OpsCommsPage</strong> — Inbox, threads, complaints, broadcasts, analytics board</li>
+          </ul>
+        </div>
+        <div class="box">
+          <h4>Transport &amp; state</h4>
+          <ul>
+            <li><span class="mono">fetch()</span> (JSON over HTTP)</li>
+            <li>JWT — <span class="mono">Authorization: Bearer …</span> in localStorage</li>
+            <li>React <span class="mono">useState</span> / <span class="mono">useEffect</span> · polling on Ops live feed</li>
+          </ul>
+        </div>
+        <div class="box">
+          <h4>Representative client payloads</h4>
+          <ul>
+            <li class="mono">{ order_id, message } → tracking assistant</li>
+            <li class="mono">{ message, intent? } → admin copilot</li>
+            <li class="mono">{ participant_type, participant_id } → ops-comms thread</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- LAYER 2 -->
+    <section class="layer">
+      <div class="layer-title">
+        Layer 2 — REST API (Flask) · <span class="tag">Role-gated JWT</span>
+      </div>
+      <div class="endpoints">
+        <div class="box">
+          <h4><span class="method-get">GET</span> endpoints</h4>
+          <ul class="ep-list mono">
+            <li>/api/ai/health</li>
+            <li>/api/ai/support/thread?participant_type=&amp;participant_id=</li>
+            <li>/api/ai/ops-comms/bootstrap</li>
+            <li>/api/ai/ops-comms/live?since_id=</li>
+            <li>/api/ai/ops-comms/inbox</li>
+            <li>/api/ai/ops-comms/thread?participant_type=&amp;participant_id=</li>
+            <li>/api/ai/ops-comms/complaints</li>
+            <li>/api/ai/ops-comms/complaint-case?complaint_id=</li>
+            <li>/api/ai/ops-comms/driver-profiles</li>
+            <li>/api/ai/ops-comms/advanced-analytics?horizon=</li>
+          </ul>
+        </div>
+        <div class="box">
+          <h4><span class="method-post">POST</span> endpoints</h4>
+          <ul class="ep-list mono">
+            <li>/api/ai/tracking-assistant</li>
+            <li>/api/ai/admin-copilot</li>
+            <li>/api/ai/admin-insights</li>
+            <li>/api/ai/assignment-recommendation</li>
+            <li>/api/ai/ops-chatbot</li>
+            <li>/api/ai/notification-draft</li>
+            <li>/api/ai/support/fake-send · /api/ai/support/chat</li>
+            <li>/api/ai/ops-comms/thread-message</li>
+            <li>/api/ai/ops-comms/broadcast</li>
+            <li>/api/ai/ops-comms/complaint-reply</li>
+            <li>/api/ai/ops-comms/log-driver-status</li>
+            <li>/api/ai/ops-comms/log-customer-complaint</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- LAYER 3 -->
+    <section class="layer">
+      <div class="layer-title">
+        Layer 3 — Flask application core · AI module
+        <span class="tag">ai_routes.py + openrouter_client.py</span>
+      </div>
+      <div class="grid-3">
+        <div class="box">
+          <h4>Router &amp; security</h4>
+          <ul>
+            <li><span class="mono">register_ai_routes(app)</span></li>
+            <li><span class="mono">verify_token()</span> → customer / admin role checks per route</li>
+            <li>Order scoped access — sender/receiver for tracking &amp; drafts</li>
+          </ul>
+        </div>
+        <div class="box">
+          <h4>Database access patterns (RPC-style)</h4>
+          <ul>
+            <li><strong>safe_cursor()</strong> — <span class="mono">dictionary=True</span> buffered cursors</li>
+            <li><strong>fetch_shipment_context_for_ai()</strong> — multi-table joins → one JSON subgraph</li>
+            <li><strong>dispatch_admin_intent()</strong> — <strong>whitelisted parameterized SQL only</strong></li>
+            <li><strong>collect_admin_ops_snapshot()</strong>, <strong>simulate_capacity_*</strong>, complaint &amp; analytics helpers</li>
+          </ul>
+        </div>
+        <div class="box">
+          <h4>External LLM (after DB read)</h4>
+          <ul>
+            <li>OpenRouter HTTP → chat completions</li>
+            <li>Uses: intent JSON classification, summarization over <strong>FACTS</strong> / tool payloads</li>
+            <li>Optional <span class="mono">response_format: json_object</span> for structured outputs</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- LAYER 4 -->
+    <section class="layer db-layer">
+      <div class="layer-title">
+        Layer 4 — MySQL · Database <span class="tag">LOGISTICS_COMPANY · relational + transactional</span>
+      </div>
+      <p style="margin: 0 0 8px; font-size: 0.8rem; color: #cbd5e1;">
+        Normalized schema (3NF operational core). Ops messages may use
+        <span class="mono">SUPPORT_MESSAGE</span> (ensured at runtime). All AI “intelligence” is grounded in
+        <strong>rows returned by explicit SQL paths below</strong>.
+      </p>
+      <div class="sql-cols">
+        <div class="sql-block a">
+          <h5>A) READ — parameterized &amp; joins</h5>
+          <pre>• shipment context: C_ORDER ⨝ CUSTOMER (parties)
+  ⨝ ORDER_UPDATE ⨝ PAYMENT ⨝ DELIVERY ⨝ DRIVER …
+• admin intents: assignments, routes, drivers,
+  vehicles, condition_reports, overrides (LIMIT + filters)
+• ops inbox/feed: SELECT … FROM SUPPORT_MESSAGE
+  WHERE participant_* · ORDER BY message_id
+• complaint queue: patterned filters on body/subject</pre>
+        </div>
+        <div class="sql-block b">
+          <h5>B) WRITE — transactional rows</h5>
+          <pre>• INSERT SUPPORT_MESSAGE (thread, broadcast, logs)
+• commit / rollback on multi-step mutations
+• demo seed guarded by EXISTS checks</pre>
+        </div>
+        <div class="sql-block c">
+          <h5>C) ANALYTIC-SQL (embedded OLTP analytics)</h5>
+          <pre>• horizon windows, OPEN vs RESOLVED complaint counts
+• severity buckets, aging_histogram (time deltas)
+• root_cause aggregates, driver_impact joins
+→ SQL aggregations over normalized + message store</pre>
+        </div>
+        <div class="sql-block d">
+          <h5>D) Integrity &amp; design tie-in</h5>
+          <pre>• PK / FK (e.g. C_ORDER.sender_id → CUSTOMER)
+• indexes recommended on participant keys + message_id
+• course topics: relational model · ER mapping ·
+  SQL · transactions · indexing · analytic queries</pre>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <p class="footnote">
+    <strong>Differentiator for DB course:</strong> The architecture separates
+    <strong>stored relational state</strong> (MySQL),
+    <strong>audited parameterized retrieval</strong> (Python-called SQL templates),
+    and <strong>non-authoritative narration</strong> (LLM). This mirrors enterprise “semantic layer over warehouse” patterns at app scale —
+    without conflating <em>analytics SQL</em> with <em>generative SQL</em>.
+  </p>
+
+</body>
+</html>

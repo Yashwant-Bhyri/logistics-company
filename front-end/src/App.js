@@ -7,6 +7,7 @@ import CustomerPage from "./pages/CustomerPage";
 import DriverPage from "./pages/DriverPage";
 import AdminPage from "./pages/AdminPage";
 import DriverSetupPage from "./pages/DriverSetupPage";
+import OpsCommsPage from "./pages/OpsCommsPage";
 
 function App() {
     return (
@@ -22,6 +23,7 @@ function App() {
                 <Route path="/customer" element={<CustomerPage />} />
                 <Route path="/driver" element={<DriverPage />} />
                 <Route path="/admin" element={<AdminPage />} />
+                <Route path="/ops-comms" element={<OpsCommsPage />} />
 
                 <Route path="/driver/set_password" element={<DriverSetupPage />} />
 
